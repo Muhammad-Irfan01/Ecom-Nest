@@ -19,8 +19,7 @@ export class SalesService {
 
     const isAdmin = adminRoles.some(ur =>
       ur.roles.permissions?.includes('admin') ||
-      ur.roles.permissions?.includes('superadmin') ||
-      ur.roles.role_translations?.some(rt => rt.name?.toLowerCase().includes('admin'))
+      ur.roles.permissions?.includes('superadmin')
     );
 
     if (!isAdmin) {
@@ -46,8 +45,6 @@ export class SalesService {
             price: product.price,
             qty: product.quantity || 0,
             position: product.position || 0,
-            created_at: new Date(),
-            updated_at: new Date(),
           }
         });
       }
@@ -215,8 +212,7 @@ export class SalesService {
 
     const isAdmin = adminRoles.some(ur =>
       ur.roles.permissions?.includes('admin') ||
-      ur.roles.permissions?.includes('superadmin') ||
-      ur.roles.role_translations?.some(rt => rt.name?.toLowerCase().includes('admin'))
+      ur.roles.permissions?.includes('superadmin')
     );
 
     if (!isAdmin) {
@@ -257,8 +253,6 @@ export class SalesService {
             price: product.price,
             qty: product.quantity || 0,
             position: product.position || 0,
-            created_at: new Date(),
-            updated_at: new Date(),
           }
         });
       }
@@ -300,8 +294,7 @@ export class SalesService {
 
     const isAdmin = adminRoles.some(ur =>
       ur.roles.permissions?.includes('admin') ||
-      ur.roles.permissions?.includes('superadmin') ||
-      ur.roles.role_translations?.some(rt => rt.name?.toLowerCase().includes('admin'))
+      ur.roles.permissions?.includes('superadmin')
     );
 
     if (!isAdmin) {
@@ -346,8 +339,7 @@ export class SalesService {
 
     const isAdmin = adminRoles.some(ur =>
       ur.roles.permissions?.includes('admin') ||
-      ur.roles.permissions?.includes('superadmin') ||
-      ur.roles.role_translations?.some(rt => rt.name?.toLowerCase().includes('admin'))
+      ur.roles.permissions?.includes('superadmin')
     );
 
     if (!isAdmin) {
@@ -355,7 +347,7 @@ export class SalesService {
     }
 
     // Check if coupon code already exists
-    const existingCoupon = await this.prisma.coupons.findUnique({
+    const existingCoupon = await this.prisma.coupons.findFirst({
       where: { code: createCouponDto.code }
     });
 
@@ -451,7 +443,7 @@ export class SalesService {
   }
 
   async findCouponByCode(code: string) {
-    const coupon = await this.prisma.coupons.findUnique({
+    const coupon = await this.prisma.coupons.findFirst({
       where: {
         code,
         is_active: true,
@@ -503,8 +495,7 @@ export class SalesService {
 
     const isAdmin = adminRoles.some(ur =>
       ur.roles.permissions?.includes('admin') ||
-      ur.roles.permissions?.includes('superadmin') ||
-      ur.roles.role_translations?.some(rt => rt.name?.toLowerCase().includes('admin'))
+      ur.roles.permissions?.includes('superadmin')
     );
 
     if (!isAdmin) {
@@ -546,8 +537,7 @@ export class SalesService {
 
     const isAdmin = adminRoles.some(ur =>
       ur.roles.permissions?.includes('admin') ||
-      ur.roles.permissions?.includes('superadmin') ||
-      ur.roles.role_translations?.some(rt => rt.name?.toLowerCase().includes('admin'))
+      ur.roles.permissions?.includes('superadmin')
     );
 
     if (!isAdmin) {
@@ -586,7 +576,7 @@ export class SalesService {
 
   // Apply coupon to order (for validation)
   async validateCoupon(code: string, userId: number, orderTotal: number) {
-    const coupon = await this.prisma.coupons.findUnique({
+    const coupon = await this.prisma.coupons.findFirst({
       where: {
         code,
         is_active: true,

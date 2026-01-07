@@ -318,8 +318,7 @@ export class OrdersService {
 
     const isAdmin = adminRoles.some(ur =>
       ur.roles.permissions?.includes('admin') ||
-      ur.roles.permissions?.includes('superadmin') ||
-      ur.roles.role_translations?.some(rt => rt.name?.toLowerCase().includes('admin'))
+      ur.roles.permissions?.includes('superadmin')
     );
 
     if (!isAdmin) {

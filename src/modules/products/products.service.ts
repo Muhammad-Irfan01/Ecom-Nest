@@ -246,7 +246,7 @@ export class ProductsService {
     const { productId, quantity, productVariantId, options } = addToCartDto;
 
     // Verify product exists and is active
-    const product = await this.prisma.products.findUnique({
+    const product = await this.prisma.products.findFirst({
       where: {
         id: productId,
         is_active: true
@@ -337,7 +337,7 @@ export class ProductsService {
     }
 
     // Verify product exists and has enough stock if quantity is increasing
-    const product = await this.prisma.products.findUnique({
+    const product = await this.prisma.products.findFirst({
       where: {
         id: productId,
         is_active: true
@@ -425,7 +425,7 @@ export class ProductsService {
   // Bookmark/Wishlist Functionality
   async addBookmark(userId: number, productId: number) {
     // Verify product exists and is active
-    const product = await this.prisma.products.findUnique({
+    const product = await this.prisma.products.findFirst({
       where: {
         id: productId,
         is_active: true
@@ -569,7 +569,7 @@ export class ProductsService {
     const orderProducts: any = [];
 
     for (const item of cartItems) {
-      const product = await this.prisma.products.findUnique({
+      const product = await this.prisma.products.findFirst({
         where: {
           id: item.productId,
           is_active: true

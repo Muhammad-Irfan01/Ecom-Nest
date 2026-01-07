@@ -18,15 +18,15 @@ export class PrismaExceptionFilter implements ExceptionFilter {
     let statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
 
     switch (exception.code) {
-      case 'P2002': 
+      case 'P2002':
         message = `Unique constraint failed on the ${exception.meta?.target}`;
         statusCode = HttpStatus.CONFLICT;
         break;
-      case 'P2025': 
+      case 'P2025':
         message = 'Record not found';
         statusCode = HttpStatus.NOT_FOUND;
         break;
-      case 'P2003': 
+      case 'P2003':
         message = 'Related record not found';
         statusCode = HttpStatus.BAD_REQUEST;
         break;

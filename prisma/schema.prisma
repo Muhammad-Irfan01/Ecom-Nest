@@ -1,10 +1,11 @@
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
+  previewFeatures = ["fullTextIndex"]
 }
 
 datasource db {
   provider = "mysql"
+  url      = env("DATABASE_URI") 
 }
 
 model activations {

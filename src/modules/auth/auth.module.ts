@@ -12,15 +12,18 @@ import { JwtModule } from '@nestjs/jwt';
     ConfigModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: configService.get<string | number>('JWT_EXPIRES_IN') || '60m' } as any,
-      }),
+      useFactory: (configService: ConfigService) => {
+        const expiresIn = configService.get<string>('JWT_ACCESS_EXPIRES_IN') || '15m';
+        return {
+          secret: configService.get<string>('JWT_SECRET'),
+          signOptions: { expiresIn: expiresIn as any },
+        };
+      },
       inject: [ConfigService],
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, MailService, PrismaService, JwtStrategy],
+  providers: [AuthService, MailService, PrismaService, JwtStrategy, ConfigService],
   exports: [AuthService],
 })
 export class AuthModule {}

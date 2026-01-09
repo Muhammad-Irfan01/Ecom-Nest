@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { JwtSignOptions } from '@nestjs/jwt';
 import { MailService } from 'src/mail/mail.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { SigninDto } from './dto/signin.dto';
@@ -8,11 +9,18 @@ import { SignupDto } from './dto/signup.dto';
 import { ActivateAccountDto } from './dto/activate-account.dto';
 import { ForgetPasswordDto } from './dto/forget-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ConfigService } from '@nestjs/config';
 
 
 @Injectable()
 export class AuthService {
-  constructor(private prisma: PrismaService, private jwtService: JwtService, private mailService: MailService) { }
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+    private mailService: MailService,
+    private configService: ConfigService,
+  ) { }
 
   async signup(dto: SignupDto) {
     const existing = await this.prisma.users.findUnique({ where: { email: dto.email } });
@@ -32,6 +40,30 @@ export class AuthService {
       },
     });
 
+    // Create user profile with additional information
+    if (dto.jobRole || dto.licenseNumber || dto.extension || dto.instituteName ||
+        dto.addressLine1 || dto.townCity || dto.country) {
+      try {
+        await this.prisma.user_profiles.create({
+          data: {
+            user_id: user.id,
+            job_role: dto.jobRole,
+            license_number: dto.licenseNumber,
+            extension: dto.extension,
+            institute_name: dto.instituteName,
+            address_line_1: dto.addressLine1,
+            town_city: dto.townCity,
+            country: dto.country || 'United Kingdom',
+            created_at: new Date(),
+            updated_at: new Date(),
+          },
+        });
+      } catch (profileError) {
+        console.error('Failed to create user profile:', profileError);
+        // Continue with signup even if profile creation fails
+      }
+    }
+
     // Create activation record - user needs admin approval
     const activationCode = generateSixDigitCode();
     const activationRecord = await this.prisma.activations.create({
@@ -43,12 +75,25 @@ export class AuthService {
       },
     });
 
-    // Send activation code to user (for reference, not for user activation)
-    await this.mailService.sendActivationCode(dto.email, activationCode);
+    // Send activation code to user (for reference, not for user activation) - non-blocking
+    this.mailService.sendActivationCode(dto.email, activationCode).catch(error => {
+      console.error('Failed to send activation email:', error);
+    });
+
+    // Generate tokens for the newly created user
+    const payload = { sub: user.id, email: user.email };
+    const expiresIn = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') || '15m';
+    const options: JwtSignOptions = { expiresIn: expiresIn as any };
+    const accessToken = this.jwtService.sign(payload, options);
+
+    // Generate a refresh token
+    const refreshToken = await this.generateRefreshToken(user.id);
 
     return {
       message: "User created successfully. Account pending admin approval",
       activationCode,
+      access_token: accessToken,
+      refresh_token: refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -118,10 +163,14 @@ export class AuthService {
   async activateAccountWithCode(dto: ActivateAccountDto) {
     const activation = await this.prisma.activations.findFirst({
       where: { code: dto.code, completed: false },
+      include: {
+        users: true
+      }
     });
 
     if (!activation) throw new BadRequestException('Invalid or expired activation code');
 
+    // Update the activation as completed
     const updatedActivation = await this.prisma.activations.update({
       where: { id: activation.id },
       data: {
@@ -131,7 +180,26 @@ export class AuthService {
       },
     });
 
-    return { message: 'Account activated successfully' };
+    // Generate tokens for the activated user
+    const payload = { sub: activation.user_id, email: activation.users.email };
+    const expiresIn = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') || '15m';
+    const options: JwtSignOptions = { expiresIn: expiresIn as any };
+    const accessToken = this.jwtService.sign(payload, options);
+
+    // Generate a refresh token
+    const refreshToken = await this.generateRefreshToken(activation.user_id);
+
+    return {
+      message: 'Account activated successfully',
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user: {
+        id: activation.user_id,
+        email: activation.users.email,
+        firstName: activation.users.first_name,
+        lastName: activation.users.last_name,
+      }
+    };
   }
 
   async signin(dto: SigninDto) {
@@ -151,8 +219,16 @@ export class AuthService {
     }
 
     const payload = { sub: user.id, email: user.email };
+    const expiresIn = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') || '15m';
+    const options: JwtSignOptions = { expiresIn: expiresIn as any };
+    const accessToken = this.jwtService.sign(payload, options);
+
+    // Generate a refresh token
+    const refreshToken = await this.generateRefreshToken(user.id);
+
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: accessToken,
+      refresh_token: refreshToken,
       user: {
         id: user.id,
         email: user.email,
@@ -291,6 +367,91 @@ export class AuthService {
       userLastName: activation.users.last_name,
       createdAt: activation.created_at,
     }));
+  }
+
+  // Generate a refresh token and store it in the database
+  async generateRefreshToken(userId: number): Promise<string> {
+    // Generate a unique refresh token
+    const refreshToken = this.generateUniqueToken();
+
+    // Store the refresh token in the database
+    await this.prisma.persistences.create({
+      data: {
+        user_id: userId,
+        code: refreshToken,
+        created_at: new Date(),
+        updated_at: new Date(),
+      },
+    });
+
+    return refreshToken;
+  }
+
+  // Verify a refresh token and return the associated user ID
+  async verifyRefreshToken(refreshToken: string): Promise<number | null> {
+    const persistence = await this.prisma.persistences.findUnique({
+      where: { code: refreshToken },
+    });
+
+    if (!persistence) {
+      return null;
+    }
+
+    return persistence.user_id;
+  }
+
+  // Remove a refresh token from the database
+  async removeRefreshToken(refreshToken: string): Promise<void> {
+    await this.prisma.persistences.deleteMany({
+      where: { code: refreshToken },
+    });
+  }
+
+  // Refresh access token using refresh token
+  async refreshToken(dto: RefreshTokenDto) {
+    const userId = await this.verifyRefreshToken(dto.refreshToken);
+
+    if (!userId) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // Get user details
+    const user = await this.prisma.users.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Generate new access token
+    const payload = { sub: user.id, email: user.email };
+    const expiresIn = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') || '15m';
+    const options: JwtSignOptions = { expiresIn: expiresIn as any };
+    const newAccessToken = this.jwtService.sign(payload, options);
+
+    // Generate a new refresh token to rotate it
+    const newRefreshToken = await this.generateRefreshToken(userId);
+
+    // Remove the old refresh token
+    await this.removeRefreshToken(dto.refreshToken);
+
+    return {
+      access_token: newAccessToken,
+      refresh_token: newRefreshToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+      },
+    };
+  }
+
+  private generateUniqueToken(): string {
+    // Generate a random string as a refresh token
+    return Math.random().toString(36).substring(2, 15) +
+           Math.random().toString(36).substring(2, 15);
   }
 }
 

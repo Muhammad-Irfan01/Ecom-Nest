@@ -13,6 +13,7 @@ import { SigninDto } from './dto/signin.dto';
 import { ActivateAccountDto } from './dto/activate-account.dto';
 import { ForgetPasswordDto } from './dto/forget-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @Controller('auth')
@@ -73,5 +74,17 @@ export class AuthController {
   async getUserRole(@Request() req) {
     const userId = req.user.sub;
     return this.authService.getUserRole(userId);
+  }
+
+  @Post('refresh')
+  async refresh(@Body() refreshTokenDto: RefreshTokenDto) {
+    return this.authService.refreshToken(refreshTokenDto);
+  }
+
+  @Post('logout')
+  async logout(@Body() refreshTokenDto: RefreshTokenDto) {
+    // Remove the refresh token from the database to invalidate it
+    await this.authService.removeRefreshToken(refreshTokenDto.refreshToken);
+    return { message: 'Logged out successfully' };
   }
 }

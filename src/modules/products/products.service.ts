@@ -6,11 +6,13 @@ import { SearchProductsDto } from './dto/search-products.dto';
 import { AddToCartDto } from './dto/add-to-cart.dto';
 import { UpdateCartItemDto } from './dto/update-cart-item.dto';
 import { CheckoutDto } from './dto/checkout.dto';
+import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
 export class ProductsService {
   constructor(
     private prisma: PrismaService,
+    private mailService: MailService,
   ) {}
 
   async create(createProductDto: CreateProductDto) {
@@ -37,6 +39,11 @@ export class ProductsService {
   }
 
   async findOne(id: number) {
+    // Additional validation to ensure id is a valid positive integer
+    if (isNaN(id) || id <= 0 || !Number.isInteger(id)) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
     const product = await this.prisma.products.findUnique({
       where: { id },
       include: {
@@ -62,12 +69,22 @@ export class ProductsService {
   }
 
   async update(id: number, updateProductDto: UpdateProductDto) {
+    // Validation to ensure id is a valid positive integer
+    if (isNaN(id) || id <= 0 || !Number.isInteger(id)) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
     // Implementation for updating a product
     // This would typically be for admin use
     throw new Error('Admin functionality not implemented in this scope');
   }
 
   async remove(id: number) {
+    // Validation to ensure id is a valid positive integer
+    if (isNaN(id) || id <= 0 || !Number.isInteger(id)) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
     // Implementation for removing a product
     // This would typically be for admin use
     throw new Error('Admin functionality not implemented in this scope');
@@ -182,7 +199,11 @@ export class ProductsService {
 
   // Cart Management Functionality
   async getCart(userId: number) {
-    // Get user's cart from the carts table
+    console.log(userId, typeof userId)
+    if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
     const cart = await this.prisma.carts.findUnique({
       where: { id: userId.toString() },
     });
@@ -191,59 +212,110 @@ export class ProductsService {
       return { items: [], total: 0, count: 0 };
     }
 
-    // Parse cart data from JSON string
-    const cartData = JSON.parse(cart.data || '{}');
-    const cartItems = cartData.items || [];
+    let cartData;
+    try {
+      cartData = JSON.parse(cart.data || '{}');
+    } catch (error) {
+      console.error('Error parsing cart data:', error);
+      // If JSON parsing fails, return an empty cart to prevent errors
+      return { items: [], total: 0, count: 0 };
+    }
+
+    const cartItems = Array.isArray(cartData.items) ? cartData.items : [];
 
     // Get product details for each item in the cart
-    const detailedCartItems = await Promise.all(
-      cartItems.map(async (item: any) => {
-        const product = await this.prisma.products.findUnique({
-          where: { id: item.productId },
-          include: {
-            product_translations: {
-              where: { locale: 'en' },
-              take: 1
-            }
-          }
-        });
+    const detailedCartItems: {
+      productId: number;
+      quantity: number;
+      product: {
+        id: number;
+        name: string;
+        price: any; // Using any since price might be Decimal from Prisma
+        slug: string;
+        image: string | null;
+      };
+      subtotal: number;
+    }[] = [];
+    for (const item of cartItems) {
+      try {
+        // Validate the product ID from the cart item
+        // Handle cases where productId might be a string, number, or undefined
+        let itemId;
 
-        if (!product) {
-          return null;
+        if (typeof item.productId === 'string') {
+          itemId = parseInt(item.productId, 10);
+        } else if (typeof item.productId === 'number') {
+          itemId = item.productId;
+        } else {
+          console.warn(`Invalid product ID type in cart: ${typeof item.productId}`, item.productId);
+          continue; // Skip this item
         }
 
-        return {
-          productId: item.productId,
-          quantity: item.quantity,
-          product: {
-            id: product.id,
-            name: product.product_translations[0]?.name || 'Unknown Product',
-            price: product.price,
-            slug: product.slug,
-            image: product.product_translations[0]?.description?.includes('img')
-              ? product.product_translations[0]?.description
-              : null,
-          },
-          subtotal: Number(product.price || 0) * item.quantity,
-        };
-      })
-    );
+        if (isNaN(itemId) || itemId <= 0 || !Number.isInteger(itemId)) {
+          console.warn(`Invalid product ID in cart: ${item.productId}`);
+          continue; // Skip this item
+        }
 
-    // Filter out null items (products that were deleted)
-    const validItems = detailedCartItems.filter(item => item !== null);
+        try {
+          const product = await this.prisma.products.findUnique({
+            where: { id: itemId },
+            include: {
+              product_translations: {
+                where: { locale: 'en' },
+                take: 1
+              }
+            }
+          });
+
+          if (!product) {
+            console.warn(`Product not found in database: ${itemId}`);
+            continue; // Skip this item
+          }
+
+          detailedCartItems.push({
+            productId: itemId, // Use the validated numeric ID instead of the original string
+            quantity: item.quantity,
+            product: {
+              id: product.id,
+              name: product.product_translations[0]?.name || 'Unknown Product',
+              price: product.price,
+              slug: product.slug,
+              image: product.product_translations[0]?.description?.includes('img')
+                ? product.product_translations[0]?.description
+                : null,
+            },
+            subtotal: Number(product.price || 0) * item.quantity,
+          });
+        } catch (productError) {
+          console.error(`Error fetching product ${itemId} for cart:`, productError);
+          continue; // Skip this item
+        }
+      } catch (itemError) {
+        console.error('Error processing cart item:', item, itemError);
+        continue; // Skip this item
+      }
+    }
 
     // Calculate total
-    const total = validItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const total = detailedCartItems.reduce((sum, item) => sum + item.subtotal, 0);
 
     return {
-      items: validItems,
+      items: detailedCartItems,
       total,
-      count: validItems.reduce((sum, item) => sum + item.quantity, 0),
+      count: detailedCartItems.reduce((sum, item) => sum + item.quantity, 0),
     };
   }
 
   async addToCart(userId: number, addToCartDto: AddToCartDto) {
     const { productId, quantity, productVariantId, options } = addToCartDto;
+
+    // Validation to ensure IDs are valid positive integers
+    if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(productId) || productId <= 0 || !Number.isInteger(productId)) {
+      throw new BadRequestException('Invalid product ID');
+    }
 
     // Verify product exists and is active
     const product = await this.prisma.products.findFirst({
@@ -269,7 +341,12 @@ export class ProductsService {
 
     let cartData: any = { items: [] };
     if (cart) {
-      cartData = JSON.parse(cart.data || '{}');
+      try {
+        cartData = JSON.parse(cart.data || '{}');
+      } catch (error) {
+        console.error('Error parsing cart data in addToCart:', error);
+        throw new BadRequestException('Invalid cart data format');
+      }
     }
 
     // Check if product already exists in cart
@@ -314,6 +391,14 @@ export class ProductsService {
   }
 
   async updateCartItem(userId: number, productId: number, updateCartItemDto: UpdateCartItemDto) {
+    // Validation to ensure IDs are valid positive integers
+    if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(productId) || productId <= 0 || !Number.isInteger(productId)) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
     const { quantity, productVariantId } = updateCartItemDto;
 
     // Get existing cart
@@ -325,7 +410,13 @@ export class ProductsService {
       throw new NotFoundException('Cart not found');
     }
 
-    const cartData = JSON.parse(cart.data || '{}');
+    let cartData;
+    try {
+      cartData = JSON.parse(cart.data || '{}');
+    } catch (error) {
+      console.error('Error parsing cart data in updateCartItem:', error);
+      throw new BadRequestException('Invalid cart data format');
+    }
 
     // Find the item to update
     const itemIndex = cartData.items.findIndex(
@@ -379,6 +470,14 @@ export class ProductsService {
   }
 
   async removeFromCart(userId: number, productId: number) {
+    // Validation to ensure IDs are valid positive integers
+    if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(productId) || productId <= 0 || !Number.isInteger(productId)) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
     // Get existing cart
     const cart = await this.prisma.carts.findUnique({
       where: { id: userId.toString() },
@@ -388,7 +487,13 @@ export class ProductsService {
       throw new NotFoundException('Cart not found');
     }
 
-    const cartData = JSON.parse(cart.data || '{}');
+    let cartData;
+    try {
+      cartData = JSON.parse(cart.data || '{}');
+    } catch (error) {
+      console.error('Error parsing cart data in removeFromCart:', error);
+      throw new BadRequestException('Invalid cart data format');
+    }
 
     // Find the item to remove
     const itemIndex = cartData.items.findIndex(
@@ -415,15 +520,28 @@ export class ProductsService {
   }
 
   async clearCart(userId: number) {
-    await this.prisma.carts.delete({
+    const result = await this.prisma.carts.deleteMany({
       where: { id: userId.toString() },
     });
+
+    if (result.count === 0) {
+      // Cart doesn't exist, but that's fine - return success
+      return { message: 'Cart cleared successfully' };
+    }
 
     return { message: 'Cart cleared successfully' };
   }
 
   // Bookmark/Wishlist Functionality
   async addBookmark(userId: number, productId: number) {
+    // Validation to ensure IDs are valid positive integers
+    if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(productId) || productId <= 0 || !Number.isInteger(productId)) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
     // Verify product exists and is active
     const product = await this.prisma.products.findFirst({
       where: {
@@ -464,17 +582,23 @@ export class ProductsService {
   }
 
   async removeBookmark(userId: number, productId: number) {
+    // Validation to ensure IDs are valid positive integers
+    if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(productId) || productId <= 0 || !Number.isInteger(productId)) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
     // Remove from wishlist
-    const result = await this.prisma.wish_lists.delete({
+    const result = await this.prisma.wish_lists.deleteMany({
       where: {
-        user_id_product_id: {
-          user_id: userId,
-          product_id: productId
-        }
+        user_id: userId,
+        product_id: productId
       }
     });
 
-    if (!result) {
+    if (result.count === 0) {
       throw new NotFoundException('Bookmark not found');
     }
 
@@ -482,6 +606,11 @@ export class ProductsService {
   }
 
   async getUserBookmarks(userId: number) {
+    // Validation to ensure userId is a valid positive integer
+    if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
     // Get user's bookmarked products with details
     const bookmarks = await this.prisma.wish_lists.findMany({
       where: {
@@ -523,6 +652,14 @@ export class ProductsService {
   }
 
   async isBookmarked(userId: number, productId: number): Promise<boolean> {
+    // Validation to ensure IDs are valid positive integers
+    if (isNaN(userId) || userId <= 0 || !Number.isInteger(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(productId) || productId <= 0 || !Number.isInteger(productId)) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
     const bookmark = await this.prisma.wish_lists.findUnique({
       where: {
         user_id_product_id: {
@@ -553,11 +690,22 @@ export class ProductsService {
       where: { id: userId.toString() },
     });
 
-    if (!cart || !JSON.parse(cart.data || '{}').items?.length) {
+    if (!cart) {
       throw new BadRequestException('Cart is empty');
     }
 
-    const cartData = JSON.parse(cart.data);
+    let cartData;
+    try {
+      cartData = JSON.parse(cart.data || '{}');
+    } catch (error) {
+      console.error('Error parsing cart data in checkout:', error);
+      throw new BadRequestException('Invalid cart data format');
+    }
+
+    if (!cartData.items?.length) {
+      throw new BadRequestException('Cart is empty');
+    }
+
     const cartItems = cartData.items;
 
     if (!cartItems || cartItems.length === 0) {
@@ -569,9 +717,15 @@ export class ProductsService {
     const orderProducts: any = [];
 
     for (const item of cartItems) {
+      // Validate the product ID from the cart item
+      const itemId = parseInt(item.productId);
+      if (isNaN(itemId) || itemId <= 0 || !Number.isInteger(itemId)) {
+        throw new BadRequestException(`Invalid product ID in cart: ${item.productId}`);
+      }
+
       const product = await this.prisma.products.findFirst({
         where: {
-          id: item.productId,
+          id: itemId,
           is_active: true
         },
         include: {
@@ -583,7 +737,7 @@ export class ProductsService {
       });
 
       if (!product) {
-        throw new BadRequestException(`Product with ID ${item.productId} not found or not available`);
+        throw new BadRequestException(`Product with ID ${itemId} not found or not available`);
       }
 
       // Check stock availability
@@ -683,6 +837,68 @@ export class ProductsService {
     await this.prisma.carts.delete({
       where: { id: userId.toString() },
     });
+
+    // Send order confirmation email
+    try {
+      const orderDetails = await this.prisma.orders.findUnique({
+        where: { id: order.id },
+        include: {
+          order_products: {
+            include: {
+              products: {
+                include: {
+                  product_translations: {
+                    where: { locale: 'en' },
+                    take: 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (orderDetails) {
+        const orderHtml = `
+          <h2>Order Confirmation</h2>
+          <p>Thank you for your order! Your order #${orderDetails.id} has been placed successfully.</p>
+
+          <h3>Order Details:</h3>
+          <p><strong>Customer:</strong> ${orderDetails.customer_first_name} ${orderDetails.customer_last_name}</p>
+          <p><strong>Email:</strong> ${orderDetails.customer_email}</p>
+          <p><strong>Date:</strong> ${orderDetails.created_at ? orderDetails.created_at.toISOString() : new Date().toISOString()}</p>
+          <p><strong>Status:</strong> ${orderDetails.status}</p>
+          <p><strong>Total:</strong> ${orderDetails.currency} ${Number(orderDetails.total).toFixed(2)}</p>
+
+          <h3>Items Ordered:</h3>
+          <ul>
+            ${orderDetails.order_products.map(op => `
+              <li>
+                <strong>${op.products?.product_translations[0]?.name || 'Unknown Product'}</strong> -
+                Quantity: ${op.qty}, Price: ${orderDetails.currency} ${Number(Number(op.unit_price) * Number(op.qty)).toFixed(2)}
+              </li>
+            `).join('')}
+          </ul>
+
+          <h3>Shipping Address:</h3>
+          <p>${orderDetails.shipping_address_1}, ${orderDetails.shipping_city}, ${orderDetails.shipping_state}, ${orderDetails.shipping_zip}, ${orderDetails.shipping_country}</p>
+
+          <h3>Payment Method:</h3>
+          <p>${orderDetails.payment_method}</p>
+
+          <p>We will notify you once your order has been processed.</p>
+        `;
+
+        await this.mailService.sendMail(
+          orderDetails.customer_email,
+          'Order Confirmation - Order #' + orderDetails.id,
+          orderHtml
+        );
+      }
+    } catch (emailError) {
+      console.error('Failed to send order confirmation email:', emailError);
+      // Don't throw error as the order was still placed successfully
+    }
 
     // Return order details
     return {

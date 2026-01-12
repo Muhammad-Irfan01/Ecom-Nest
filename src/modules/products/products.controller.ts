@@ -8,7 +8,8 @@ import {
   Delete,
   Query,
   UseGuards,
-  Request
+  Request,
+  BadRequestException
 } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
@@ -34,24 +35,31 @@ export class ProductsController {
   @Patch(':id')
   @UseGuards(JwtAuthGuard)
   update(@Param('id') id: string, @Body() updateProductDto: UpdateProductDto) {
-    return this.productsService.update(+id, updateProductDto);
+    const productId = parseInt(id, 10);
+
+    if (isNaN(productId) || productId <= 0) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
+    return this.productsService.update(productId, updateProductDto);
   }
 
   @Delete(':id')
   @UseGuards(JwtAuthGuard)
   remove(@Param('id') id: string) {
-    return this.productsService.remove(+id);
+    const productId = parseInt(id, 10);
+
+    if (isNaN(productId) || productId <= 0) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
+    return this.productsService.remove(productId);
   }
 
   // Public endpoints
   @Get()
   findAll() {
     return this.productsService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.productsService.findOne(+id);
   }
 
   // Product search endpoint
@@ -64,13 +72,25 @@ export class ProductsController {
   @Get('cart')
   @UseGuards(JwtAuthGuard)
   getCart(@Request() req) {
-    return this.productsService.getCart(req.user.userId || req.user.sub);
+    const userId = parseInt(req.user.userId || req.user.sub);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    return this.productsService.getCart(userId);
   }
 
   @Post('cart/add')
   @UseGuards(JwtAuthGuard)
   addToCart(@Request() req, @Body() addToCartDto: AddToCartDto) {
-    return this.productsService.addToCart(req.user.userId || req.user.sub, addToCartDto);
+    const userId = parseInt(req.user.userId || req.user.sub);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    return this.productsService.addToCart(userId, addToCartDto);
   }
 
   @Patch('cart/update/:productId')
@@ -80,9 +100,19 @@ export class ProductsController {
     @Param('productId') productId: string,
     @Body() updateCartItemDto: UpdateCartItemDto
   ) {
+    const userId = parseInt(req.user.userId || req.user.sub);
+    const parsedProductId = parseInt(productId, 10);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(parsedProductId) || parsedProductId <= 0) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
     return this.productsService.updateCartItem(
-      req.user.userId || req.user.sub,
-      +productId,
+      userId,
+      parsedProductId,
       updateCartItemDto
     );
   }
@@ -90,44 +120,111 @@ export class ProductsController {
   @Delete('cart/remove/:productId')
   @UseGuards(JwtAuthGuard)
   removeFromCart(@Request() req, @Param('productId') productId: string) {
-    return this.productsService.removeFromCart(req.user.userId || req.user.sub, +productId);
+    const userId = parseInt(req.user.userId || req.user.sub);
+    const parsedProductId = parseInt(productId, 10);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(parsedProductId) || parsedProductId <= 0) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
+    return this.productsService.removeFromCart(userId, parsedProductId);
   }
 
   @Post('cart/clear')
   @UseGuards(JwtAuthGuard)
   clearCart(@Request() req) {
-    return this.productsService.clearCart(req.user.userId || req.user.sub);
+    const userId = parseInt(req.user.userId || req.user.sub);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    return this.productsService.clearCart(userId);
   }
 
   // Checkout endpoint (user must be authenticated)
   @Post('checkout')
   @UseGuards(JwtAuthGuard)
   checkout(@Request() req, @Body() checkoutDto: CheckoutDto) {
-    return this.productsService.checkout(req.user.userId || req.user.sub, checkoutDto);
+    const userId = parseInt(req.user.userId || req.user.sub);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    return this.productsService.checkout(userId, checkoutDto);
   }
 
   // Bookmark/Wishlist endpoints (user must be authenticated)
   @Post('bookmark')
   @UseGuards(JwtAuthGuard)
   addBookmark(@Request() req, @Body() bookmarkDto: BookmarkProductDto) {
-    return this.productsService.addBookmark(req.user.userId || req.user.sub, bookmarkDto.productId);
+    const userId = parseInt(req.user.userId || req.user.sub);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    return this.productsService.addBookmark(userId, bookmarkDto.productId);
   }
 
   @Delete('bookmark/:productId')
   @UseGuards(JwtAuthGuard)
   removeBookmark(@Request() req, @Param('productId') productId: string) {
-    return this.productsService.removeBookmark(req.user.userId || req.user.sub, +productId);
+    const userId = parseInt(req.user.userId || req.user.sub);
+    const parsedProductId = parseInt(productId, 10);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(parsedProductId) || parsedProductId <= 0) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
+    return this.productsService.removeBookmark(userId, parsedProductId);
   }
 
   @Get('bookmarks')
   @UseGuards(JwtAuthGuard)
   getUserBookmarks(@Request() req) {
-    return this.productsService.getUserBookmarks(req.user.userId || req.user.sub);
+    const userId = parseInt(req.user.userId || req.user.sub);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    return this.productsService.getUserBookmarks(userId);
   }
 
   @Get(':id/is-bookmarked')
   @UseGuards(JwtAuthGuard)
   isBookmarked(@Request() req, @Param('id') productId: string) {
-    return this.productsService.isBookmarked(req.user.userId || req.user.sub, +productId);
+    const userId = parseInt(req.user.userId || req.user.sub);
+    const parsedProductId = parseInt(productId, 10);
+
+    if (isNaN(userId) || userId <= 0) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (isNaN(parsedProductId) || parsedProductId <= 0) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
+    return this.productsService.isBookmarked(userId, parsedProductId);
+  }
+
+   @Get(':id')
+  findOne(@Param('id') id: string) {
+    const productId = parseInt(id, 10);
+
+    if (isNaN(productId) || productId <= 0) {
+      throw new BadRequestException('Invalid product ID');
+    }
+
+    return this.productsService.findOne(productId);
   }
 }
+
+

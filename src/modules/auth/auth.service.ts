@@ -84,16 +84,16 @@ export class AuthService {
     const payload = { sub: user.id, email: user.email };
     const expiresIn = this.configService.get<string>('JWT_ACCESS_EXPIRES_IN') || '15m';
     const options: JwtSignOptions = { expiresIn: expiresIn as any };
-    const accessToken = this.jwtService.sign(payload, options);
+    const access_token = this.jwtService.sign(payload, options);
 
     // Generate a refresh token
-    const refreshToken = await this.generateRefreshToken(user.id);
+    const refresh_token = await this.generateRefreshToken(user.id);
 
     return {
       message: "User created successfully. Account pending admin approval",
       activationCode,
-      access_token: accessToken,
-      refresh_token: refreshToken,
+      access_token: access_token,
+      refresh_token: refresh_token,
       user: {
         id: user.id,
         email: user.email,

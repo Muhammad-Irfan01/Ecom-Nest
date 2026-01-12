@@ -20,7 +20,7 @@ async function bootstrap() {
     origin: ['http://localhost:3001'], // Next.js frontend URL
     credentials: true,                // allows cookies to be sent
   });
-
+ 
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();

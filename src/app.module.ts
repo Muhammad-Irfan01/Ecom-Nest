@@ -6,8 +6,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { UserModule } from './modules/user/user.module';
 import { ProductsModule } from './modules/products/products.module';
 import { OrdersModule } from './modules/orders/orders.module';
-import { SalesModule } from './modules/sales/sales.module';
 import { AccessProgramModule } from './modules/access-program/access-program.module';
+import { SharedModule } from './modules/shared/shared.module';
 
 @Module({
   imports: [
@@ -15,8 +15,8 @@ import { AccessProgramModule } from './modules/access-program/access-program.mod
     UserModule,
     ProductsModule,
     OrdersModule,
-    SalesModule,
     AccessProgramModule,
+    SharedModule,
   ],
   controllers: [AppController],
   providers: [AppService, PrismaService],

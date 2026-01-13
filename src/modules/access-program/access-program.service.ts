@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
+import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class AccessProgramService {
@@ -129,7 +130,7 @@ export class AccessProgramService {
   }
 
   // Create a patient (create an order that represents a patient enrollment)
-  async createPatient(createPatientDto: CreatePatientDto) {
+  async createPatient(createPatientDto: CreatePatientDto, user?: any) {
     // In this implementation, creating a patient means creating an order
     // that represents their enrollment in a program
 
@@ -143,39 +144,46 @@ export class AccessProgramService {
     }
 
     // Create an order that represents the patient enrollment
+    const orderData: any = {
+      customer_email: createPatientDto.email || `${createPatientDto.firstName}.${createPatientDto.lastName}@example.com`,
+      customer_phone: createPatientDto.phone || '',
+      customer_first_name: createPatientDto.firstName,
+      customer_last_name: createPatientDto.lastName,
+      billing_first_name: createPatientDto.firstName,
+      billing_last_name: createPatientDto.lastName,
+      billing_address_1: createPatientDto.address || 'N/A',
+      billing_city: createPatientDto.city || 'N/A',
+      billing_state: createPatientDto.state || 'N/A',
+      billing_zip: createPatientDto.zip || 'N/A',
+      billing_country: createPatientDto.country || 'N/A',
+      shipping_first_name: createPatientDto.firstName,
+      shipping_last_name: createPatientDto.lastName,
+      shipping_address_1: createPatientDto.address || 'N/A',
+      shipping_city: createPatientDto.city || 'N/A',
+      shipping_state: createPatientDto.state || 'N/A',
+      shipping_zip: createPatientDto.zip || 'N/A',
+      shipping_country: createPatientDto.country || 'N/A',
+      sub_total: new Decimal('0'),
+      shipping_cost: new Decimal('0'),
+      discount: new Decimal('0'),
+      total: new Decimal('0'),
+      payment_method: 'N/A',
+      currency: 'USD',
+      currency_rate: new Decimal('1'),
+      locale: 'en',
+      status: 'pending',
+      note: `Patient enrollment for ${createPatientDto.firstName} ${createPatientDto.lastName}`,
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+
+    // Only add customer_id if it exists to avoid setting it to null/undefined
+    if (user?.userId || user?.sub) {
+      orderData.customer_id = user?.userId || user?.sub;
+    }
+
     const order = await this.prisma.orders.create({
-      data: {
-        customer_email: createPatientDto.email || `${createPatientDto.firstName}.${createPatientDto.lastName}@example.com`,
-        customer_phone: createPatientDto.phone || '',
-        customer_first_name: createPatientDto.firstName,
-        customer_last_name: createPatientDto.lastName,
-        billing_first_name: createPatientDto.firstName,
-        billing_last_name: createPatientDto.lastName,
-        billing_address_1: createPatientDto.address || 'N/A',
-        billing_city: createPatientDto.city || 'N/A',
-        billing_state: createPatientDto.state || 'N/A',
-        billing_zip: createPatientDto.zip || 'N/A',
-        billing_country: createPatientDto.country || 'N/A',
-        shipping_first_name: createPatientDto.firstName,
-        shipping_last_name: createPatientDto.lastName,
-        shipping_address_1: createPatientDto.address || 'N/A',
-        shipping_city: createPatientDto.city || 'N/A',
-        shipping_state: createPatientDto.state || 'N/A',
-        shipping_zip: createPatientDto.zip || 'N/A',
-        shipping_country: createPatientDto.country || 'N/A',
-        sub_total: 0,
-        shipping_cost: 0,
-        discount: 0,
-        total: 0,
-        payment_method: 'N/A',
-        currency: 'USD',
-        currency_rate: 1,
-        locale: 'en',
-        status: 'pending',
-        note: `Patient enrollment for ${createPatientDto.firstName} ${createPatientDto.lastName}`,
-        created_at: new Date(),
-        updated_at: new Date(),
-      }
+      data: orderData
     });
 
     // Add the product to the order
@@ -183,9 +191,9 @@ export class AccessProgramService {
       data: {
         order_id: order.id,
         product_id: createPatientDto.programId,
-        unit_price: product.price || 0,
+        unit_price: product.price || new Decimal('0'),
         qty: 1,
-        line_total: product.price || 0,
+        line_total: product.price || new Decimal('0'),
       }
     });
 

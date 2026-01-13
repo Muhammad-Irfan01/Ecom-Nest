@@ -6,6 +6,7 @@ import {
   Param,
   Query,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { AccessProgramService } from './access-program.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
@@ -51,7 +52,7 @@ export class AccessProgramController {
   // Create a patient (enroll in a program)
   @Post('patients')
   @UseGuards(JwtAuthGuard)
-  createPatient(@Body() createPatientDto: CreatePatientDto) {
-    return this.accessProgramService.createPatient(createPatientDto);
+  createPatient(@Request() req, @Body() createPatientDto: CreatePatientDto) {
+    return this.accessProgramService.createPatient(createPatientDto, req.user);
   }
 }
